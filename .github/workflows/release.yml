@@ -1,0 +1,213 @@
+name: Release Build
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            name: linux-x86_64
+            nix-package: default
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            name: macos-x86_64
+            nix-package: default
+            os: macos-14
+          - target: aarch64-apple-darwin
+            name: macos-arm64
+            nix-package: default
+            os: macos-14
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+            max-jobs = auto
+            cores = 0
+
+      - name: Setup Nix cache
+        uses: cachix/cachix-action@v15
+        with:
+          name: nix-community
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+        continue-on-error: true
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-
+            ${{ runner.os }}-cargo-
+
+      - name: Cache target directory
+        uses: actions/cache@v4
+        with:
+          path: target/
+          key: ${{ runner.os }}-${{ matrix.target }}-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-target-
+            ${{ runner.os }}-target-
+
+      - name: Build binary
+        run: |
+          echo "Building for target: ${{ matrix.target }}"
+          if [ "${{ matrix.nix-package }}" = "default" ]; then
+            nix build . 2>&1 || { nix log .#default 2>/dev/null | tail -100; exit 1; }
+          else
+            nix build .#${{ matrix.nix-package }} 2>&1 || { nix log .#${{ matrix.nix-package }} 2>/dev/null | tail -100; exit 1; }
+          fi
+
+      - name: Prepare artifacts
+        run: |
+          mkdir -p artifacts
+          cp result/bin/fishspeech-mcp-server artifacts/fishspeech-mcp-server
+          chmod +x artifacts/fishspeech-mcp-server
+
+          # Copy encode-voice if it was built
+          if [[ -x result/bin/encode-voice ]]; then
+            cp result/bin/encode-voice artifacts/encode-voice
+            chmod +x artifacts/encode-voice
+          fi
+
+          cd artifacts
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum * > checksums.sha256
+          elif command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 * > checksums.sha256
+          else
+            echo "No SHA256 utility found" >&2
+            exit 1
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fishspeech-mcp-server-${{ matrix.name }}
+          path: artifacts/
+          retention-days: 30
+
+  build-cuda:
+    name: Build (linux-x86_64-cuda)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install CUDA toolkit
+        uses: Jimver/cuda-toolkit@v0.2.23
+        with:
+          cuda: '12.6.3'
+          method: network
+          sub-packages: '["nvcc", "cudart-dev"]'
+          non-cuda-sub-packages: '["libcublas-dev"]'
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake libclang-dev libopus-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cuda-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cuda-cargo-
+
+      - name: Cache target directory
+        uses: actions/cache@v4
+        with:
+          path: target/
+          key: ${{ runner.os }}-cuda-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cuda-target-
+
+      - name: Build CUDA binary
+        run: cargo build --release --features cuda
+
+      - name: Prepare artifacts
+        run: |
+          mkdir -p artifacts
+          cp target/release/fishspeech-mcp-server artifacts/fishspeech-mcp-server
+          chmod +x artifacts/fishspeech-mcp-server
+
+          if [[ -x target/release/encode-voice ]]; then
+            cp target/release/encode-voice artifacts/encode-voice
+            chmod +x artifacts/encode-voice
+          fi
+
+          cd artifacts
+          sha256sum * > checksums.sha256
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fishspeech-mcp-server-linux-x86_64-cuda
+          path: artifacts/
+          retention-days: 30
+
+  release:
+    name: Upload Release Assets
+    needs: [build, build-cuda]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+
+          cd release-artifacts
+          for artifact_dir in fishspeech-mcp-server-*/; do
+            platform=$(basename "$artifact_dir")
+            echo "Creating archive for $platform..."
+
+            cd "$artifact_dir"
+            chmod +x fishspeech-mcp-server 2>/dev/null || true
+            chmod +x encode-voice 2>/dev/null || true
+            tar -czf "../../release/${platform}.tar.gz" *
+            cd ..
+          done
+
+          cd ../release
+          ls -la
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload ${{ github.ref_name }} release/* --clobber
