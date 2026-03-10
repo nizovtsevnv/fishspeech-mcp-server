@@ -31,20 +31,12 @@ struct Args {
     /// Output .npy file path
     #[arg(long, short)]
     output: String,
-
-    /// Device: "cpu" or "cuda"
-    #[arg(long, default_value = "cpu")]
-    device: String,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    let device = if args.device == "cuda" {
-        Device::cuda_if_available(0).unwrap_or(Device::Cpu)
-    } else {
-        Device::Cpu
-    };
+    let device = Device::cuda_if_available(0).unwrap_or(Device::Cpu);
 
     eprintln!("Loading codec from {} ...", args.checkpoint_dir);
     let checkpoint_dir = PathBuf::from(&args.checkpoint_dir);

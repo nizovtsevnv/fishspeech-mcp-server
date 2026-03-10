@@ -719,6 +719,7 @@ dependencies = [
 name = "fishspeech-mcp-server"
 version = "0.1.0"
 dependencies = [
+ "audiopus_sys",
  "axum",
  "base64 0.22.1",
  "candle-core",

@@ -39,7 +39,6 @@ Options:
   --checkpoint-dir <PATH>    Path to model checkpoint directory (auto-downloads from HF if not set)
   --hf-repo <REPO>           HuggingFace repo ID [default: jkeisling/fish-speech-1.5]
   --voices-dir <PATH>        Directory with voice .npy files for voice cloning
-  --device <DEVICE>          Device: cpu or cuda [default: cpu]
   --temp <FLOAT>             Sampling temperature [default: 0.7]
   --top-p <FLOAT>            Top-p (nucleus) sampling [default: 0.8]
   --top-k <INT>              Top-k sampling [default: 256]
@@ -59,7 +58,6 @@ Options:
 - Rust toolchain (stable)
 - CMake (tokenizers/candle bindgen dependency)
 - libclang (bindgen dependency)
-- libopus (OGG/Opus encoding)
 
 ### Standard build
 
@@ -69,7 +67,7 @@ cargo build --release
 
 ### CUDA build
 
-CUDA requires NVIDIA CUDA toolkit (nvcc, cudart, cuBLAS):
+CUDA requires NVIDIA CUDA toolkit (nvcc, cudart, cuBLAS). When built with this feature, the server automatically uses the GPU if available, falling back to CPU otherwise:
 
 ```bash
 cargo build --release --features cuda
@@ -107,7 +105,7 @@ Then use `--voices-dir` to load all `.npy` files and reference them by name in t
 | `serde`, `serde_json` | JSON serialization for MCP protocol |
 | `base64` | Encoding audio output as base64 |
 | `hound` | WAV encoding (test-only) |
-| `opus`, `ogg` | Native OGG/Opus audio encoding |
+| `opus`, `ogg` | Native OGG/Opus audio encoding (libopus statically linked) |
 | `tracing`, `tracing-subscriber` | Structured logging to stderr |
 | `axum` | HTTP server framework for MCP HTTP transport |
 | `tokio` | Async runtime for HTTP transport |

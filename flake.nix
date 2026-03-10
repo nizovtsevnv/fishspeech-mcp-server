@@ -18,11 +18,26 @@
         pname = cargoToml.package.name;
         version = cargoToml.package.version;
 
-        cargoHash = "sha256-JNB3KI0USNKGCYfXzR1w4izsiQ0IoqwtMKG+5zolI1U=";
+        cargoHash = "sha256-7x5l061za1kueFdR4vWXyTDZMLtriAk1wWiyyLkodnU=";
 
         rustToolchain = pkgs.rust-bin.stable.latest.default;
+
+        # Static libopus for embedding into the binary
+        libopusStatic = pkgs.libopus.overrideAttrs (old: {
+          mesonFlags = (old.mesonFlags or []) ++ [
+            (pkgs.lib.mesonOption "default_library" "static")
+          ];
+        });
+
+        commonEnv = {
+          LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+          # Use pre-built static libopus — bypass pkg-config to avoid dynamic linking
+          LIBOPUS_STATIC = "1";
+          LIBOPUS_NO_PKG = "1";
+          LIBOPUS_LIB_DIR = "${libopusStatic}";
+        };
       in {
-        devShells.default = pkgs.mkShell {
+        devShells.default = pkgs.mkShell (commonEnv // {
           buildInputs = [
             rustToolchain
             pkgs.cmake
@@ -31,8 +46,6 @@
             pkgs.llvmPackages.libclang
             pkgs.libopus
           ];
-
-          LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
 
           shellHook = ''
             # Set up git hooks if .git exists
@@ -48,10 +61,10 @@ HOOK
               chmod +x .git/hooks/pre-commit
             fi
           '';
-        };
+        });
 
         packages = {
-          default = pkgs.rustPlatform.buildRustPackage {
+          default = pkgs.rustPlatform.buildRustPackage (commonEnv // {
             inherit pname version;
             src = ./.;
             inherit cargoHash;
@@ -61,15 +74,12 @@ HOOK
               pkg-config
               llvmPackages.libclang
             ];
-            buildInputs = [ pkgs.libopus ];
-
-            LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
 
             meta = with pkgs.lib; {
               description = "Text-to-speech MCP server powered by Fish Speech 1.5";
               license = licenses.mit;
             };
-          };
+          });
         };
       }
     );

@@ -40,10 +40,6 @@ struct Args {
     #[arg(long)]
     voices_dir: Option<String>,
 
-    /// Device: "cpu" or "cuda"
-    #[arg(long, default_value = "cpu")]
-    device: String,
-
     /// Sampling temperature
     #[arg(long, default_value_t = 0.7)]
     temp: f64,
@@ -189,12 +185,8 @@ fn main() {
 
     let args = Args::parse();
 
-    // Resolve device
-    let device = if args.device == "cuda" {
-        Device::cuda_if_available(0).unwrap_or(Device::Cpu)
-    } else {
-        Device::Cpu
-    };
+    // Resolve device (CUDA is used automatically when built with --features cuda)
+    let device = Device::cuda_if_available(0).unwrap_or(Device::Cpu);
 
     tracing::info!(device = ?device, "selected compute device");
 

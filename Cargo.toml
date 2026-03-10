@@ -28,6 +28,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 uuid = { version = "1", features = ["v4"] }
 libc = "0.2"
 opus = "0.3"
+audiopus_sys = { version = "0.2.2", features = ["static"] }
 ogg = "0.9"
 
 [[bin]]

@@ -154,6 +154,8 @@ jobs:
 
       - name: Build CUDA binary
         run: cargo build --release --features cuda
+        env:
+          LIBOPUS_STATIC: "1"
 
       - name: Prepare artifacts
         run: |
