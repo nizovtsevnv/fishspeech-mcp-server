@@ -198,6 +198,8 @@ git tag -d vX.Y.Z
 git push origin :refs/tags/vX.Y.Z 2>/dev/null || true
 ```
 
+> **Important**: after recreating a tag and pushing, ALWAYS execute the `gh release edit/create` block below — deleting a remote tag converts its associated release to draft.
+
 **Show summary and ask before push** via AskUserQuestion:
 ```
 Ready to push release vX.Y.Z
