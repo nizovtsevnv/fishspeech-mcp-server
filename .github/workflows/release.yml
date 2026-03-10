@@ -156,6 +156,7 @@ jobs:
         run: cargo build --release --features cuda
         env:
           LIBOPUS_STATIC: "1"
+          CUDA_COMPUTE_CAP: "80"
 
       - name: Prepare artifacts
         run: |
